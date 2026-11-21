@@ -1,0 +1,15 @@
+__pycache__/
+*.pyc
+**/results/replays/.tmp_*
+**/results/games.json.tmp
+.DS_Store
+desktop.ini
+
+# ---- kept on this computer only: student code, marks, instructor solution ----
+Submission/
+league_platform/agents/
+league_platform/private/
+league_platform/results/submissions.json
+league_platform/ranking_public.md
+league_platform/ranking_moodle.html
+instructor/reference_agent.py

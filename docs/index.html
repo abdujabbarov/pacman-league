@@ -1,0 +1,356 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pac-Man League · Replays</title>
+<style>
+  :root { --bg:#0b0f17; --card:#121826; --line:#1f2a3d; --text:#e6edf7; --muted:#8a97ad;
+          --pac:#f5b942; --ghost:#e5484d; --wall:#22304a; --floor:#0d1320; --food:#cbd5e1; --warn:#f0a04b; }
+  * { box-sizing:border-box; }
+  html, body { height:100%; }
+  body { margin:0; background:var(--bg); color:var(--text); font:14px/1.45 -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; display:flex; flex-direction:column; min-height:100vh; }
+  header { display:flex; align-items:center; gap:14px; padding:10px 16px; border-bottom:1px solid var(--line); flex-wrap:wrap; }
+  header h1 { font-size:16px; margin:0 14px 0 0; letter-spacing:.3px; white-space:nowrap; }
+  header .sub { color:var(--muted); font-size:12px; margin-left:auto; }
+  .tabs { display:flex; gap:6px; }
+  .tabs button { min-width:84px; }
+  .topbar { display:flex; flex-wrap:wrap; align-items:center; gap:8px 18px; padding:10px 16px; border-bottom:1px solid var(--line); background:var(--card); }
+  .group { display:flex; align-items:center; gap:6px; flex-wrap:wrap; }
+  .group > label { color:var(--muted); font-size:11px; text-transform:uppercase; letter-spacing:.08em; margin:0 4px 0 0; }
+  button { font:inherit; color:var(--text); background:#0e1522; border:1px solid var(--line); border-radius:8px; padding:6px 10px; cursor:pointer; }
+  button.primary { background:var(--pac); color:#1a1200; border-color:transparent; font-weight:600; min-width:64px; }
+  button.active, .chip.active { border-color:var(--pac); color:var(--pac); }
+  button:disabled { opacity:.45; cursor:default; }
+  .chip { padding:5px 10px; font-size:13px; }
+  input[type=range] { width:120px; vertical-align:middle; }
+  main { display:grid; grid-template-columns:200px minmax(0,1fr) 200px; gap:12px; padding:12px 16px; flex:1; min-height:0; }
+  @media (max-width: 1000px) { main { grid-template-columns:minmax(0,1fr) minmax(0,1fr); padding:10px; } main .centre { grid-column:1 / -1; order:-1; } .topbar, header { padding-left:10px; padding-right:10px; } }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:12px; min-width:0; }
+  .card h2 { font-size:12px; text-transform:uppercase; letter-spacing:.12em; color:var(--muted); margin:0 0 10px; }
+  .list { display:flex; flex-direction:column; gap:6px; max-height:calc(100vh - 230px); overflow:auto; }
+  @media (max-width: 1000px) { .list { max-height:260px; } }
+  .item { text-align:left; display:flex; justify-content:space-between; align-items:center; gap:8px; padding:8px 10px; }
+  .item .tag { font-size:10px; text-transform:uppercase; letter-spacing:.08em; color:var(--muted); }
+  .item.sel { border-color:var(--pac); background:#1a2235; }
+  .pane.gho .item.sel { border-color:var(--ghost); }
+  .item.dim { opacity:.35; }
+  .centre { display:flex; flex-direction:column; gap:12px; min-width:0; }
+  .boardcard { display:flex; justify-content:center; align-items:center; padding:10px; }
+  canvas { display:block; background:var(--floor); border-radius:10px; max-width:100%; }
+  .status { display:flex; flex-wrap:wrap; gap:6px 22px; font-variant-numeric:tabular-nums; }
+  .status div b { color:var(--muted); font-weight:500; display:block; font-size:10px; text-transform:uppercase; letter-spacing:.08em; }
+  .big { font-size:18px; font-weight:600; }
+  .pac { color:var(--pac); } .gho { color:var(--ghost); }
+  .hint { margin-top:8px; padding:8px 10px; border-radius:8px; background:#0e1522; border:1px dashed var(--line); color:var(--muted); font-size:13px; }
+  .result { margin-top:8px; padding:8px 10px; border-radius:8px; background:#0e1522; border:1px solid var(--line); font-weight:600; }
+  .log { margin-top:8px; height:96px; overflow:auto; font:12px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; color:var(--muted); white-space:pre; column-count:2; column-gap:18px; }
+  .log .f { color:var(--warn); }
+  .small { color:var(--muted); font-size:12px; }
+  .hidden { display:none !important; }
+  #slider { width:100%; margin-top:10px; }
+  /* table */
+  #tableView { padding:12px 16px; }
+  .scroll { overflow:auto; }
+  table { border-collapse:collapse; font-variant-numeric:tabular-nums; }
+  .matrix th, .matrix td { padding:0; border:1px solid var(--bg); }
+  .matrix thead th { font-size:11px; font-weight:500; padding:6px 4px; vertical-align:bottom; color:var(--ghost); min-width:64px; }
+  .matrix tbody th { text-align:right; padding:0 10px; color:var(--pac); font-weight:500; font-size:12px; white-space:nowrap; }
+  .matrix thead th.corner { color:var(--muted); text-align:right; font-size:10px; text-transform:uppercase; letter-spacing:.08em; }
+  .matrix .house { opacity:.75; font-style:italic; }
+  .matrix td button { width:100%; min-width:64px; height:34px; border:0; border-radius:4px; padding:0 6px; font-size:13px; color:#0b0f17; font-weight:600; font-variant-numeric:tabular-nums; }
+  .matrix td button.empty { background:#0e1522; color:var(--muted); font-weight:400; cursor:default; }
+  .matrix td.self button { outline:2px dashed var(--text); outline-offset:-4px; }
+  .legend { display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:10px; }
+  .legend .bar { width:160px; height:10px; border-radius:5px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Pac-Man League · Replays</h1>
+  <div class="tabs">
+    <button id="tabReplay" class="active" onclick="setMode('replay')">Replays</button>
+    <button id="tabTable" onclick="setMode('table')">Table</button>
+  </div>
+  <span class="sub" id="note">loading…</span>
+</header>
+
+<div class="topbar">
+  <div class="group"><label>Board</label><span id="boardChips"></span></div>
+  <div class="group" id="viewGroup"><label>View</label><span id="fogChips"></span></div>
+  <div class="group" id="speedGroup"><label>Speed</label><input type="range" id="speed" min="40" max="600" step="10" value="160" oninput="$('speedLabel').textContent=this.value"><span class="small"><span id="speedLabel">160</span> ms/tick</span></div>
+  <div class="group" id="playGroup">
+    <button onclick="step(-1)" title="one move back (←)">◀</button>
+    <button class="primary" id="playBtn" onclick="togglePlay()" title="space">Play</button>
+    <button onclick="step(1)" title="one move forward (→)">▶</button>
+  </div>
+</div>
+
+<main id="replayView">
+  <aside class="card pane pac"><h2 class="pac">Pac-Man</h2><div class="list" id="pacList"></div></aside>
+  <section class="centre">
+    <div class="card boardcard"><canvas id="board" width="630" height="450"></canvas></div>
+    <div class="card">
+      <div class="status">
+        <div><b>Tick</b><span class="big" id="sTick">–</span></div>
+        <div><b>Status</b><span class="big" id="sTurn">–</span></div>
+        <div><b class="pac">Pac-Man</b><span id="sPac">–</span></div>
+        <div><b class="gho">Ghost</b><span id="sGhost">–</span></div>
+        <div><b>Food</b><span id="sFood">–</span></div>
+        <div><b>Faults P / G</b><span id="sFaults">–</span></div>
+      </div>
+      <input type="range" id="slider" min="0" max="0" value="0" oninput="seek(+this.value)">
+      <div class="hint" id="hint">Pick a Pac-Man on the left, a ghost on the right and a board on top.</div>
+      <div class="result hidden" id="result"></div>
+      <div class="log" id="log"></div>
+    </div>
+  </section>
+  <aside class="card pane gho"><h2 class="gho">Ghost</h2><div class="list" id="ghostList"></div></aside>
+</main>
+
+<section id="tableView" class="hidden">
+  <div class="card">
+    <h2>Pac-Man (rows) against ghost (columns)</h2>
+    <div class="legend small"><span>Pac-Man score:</span><span>0</span><span class="bar" id="legendBar"></span><span>1</span>
+      <span>· dashed = against its own ghost · click a cell to watch the game</span></div>
+    <div class="scroll"><table class="matrix" id="matrix"></table></div>
+    <p class="small">Pac-Man's score is the share of the food eaten, halved if caught; the ghost scores 1 minus that.
+      "All boards" shows the average over the five boards.</p>
+  </div>
+</section>
+
+<script>
+const $ = id => document.getElementById(id);
+const key = (r, c) => r + ',' + c;
+const esc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+let cat = null, mode = 'replay';
+let sel = {pacman:null, ghost:null, board:null, fog:'all'};
+let tableBoard = null;
+let board = null, view = null, lastSeen = {pacman:null, ghost:null};
+let anim = {prev:null, cur:null, t0:0, dur:120};
+let rep = {data:null, game:null, idx:0, playing:false, handle:null, cache:{}};
+
+const tagOf = n => { if (cat.house[n]) return 'house'; const p = cat.players.find(x => x.name === n); return p && p.kind === 'instructor' ? 'instructor' : ''; };
+const boardOf = name => cat.boards.find(b => b.name === name);
+const findGame = (p, g, b) => cat.games.find(x => x.pacman === p && x.ghost === g && x.board === b);
+
+function chips(holder, items, current, onPick) {
+  holder.innerHTML = '';
+  items.forEach(it => { const b = document.createElement('button'); b.className = 'chip' + (it.value === current ? ' active' : ''); b.textContent = it.label; b.onclick = () => onPick(it.value); holder.appendChild(b); });
+}
+function listItems(holder, items, current, onPick) {
+  holder.innerHTML = '';
+  items.forEach(it => {
+    const b = document.createElement('button'); b.className = 'item' + (it.value === current ? ' sel' : '') + (it.dim ? ' dim' : '');
+    b.innerHTML = `<span>${esc(it.value)}</span><span class="tag">${esc(it.tag || '')}</span>`; b.onclick = () => onPick(it.value); holder.appendChild(b);
+  });
+}
+
+// ------------------------------------------------------------------ drawing
+function lerp(a, b, t) { return [a[0] + (b[0]-a[0])*t, a[1] + (b[1]-a[1])*t]; }
+function visibleNow(v) { return Math.abs(v.pacman[0]-v.ghost[0]) + Math.abs(v.pacman[1]-v.ghost[1]) <= 6; }
+function draw() {
+  const cv = $('board'), ctx = cv.getContext('2d');
+  if (!board || !view) { ctx.clearRect(0, 0, cv.width, cv.height); return; }
+  const W = (cv.parentElement.clientWidth || 600) - 20;
+  const H = Math.max(260, window.innerHeight - (window.innerWidth <= 1000 ? 200 : 330));
+  const cell = Math.max(8, Math.floor(Math.min(W / board.cols, H / board.rows)));
+  cv.width = cell * board.cols; cv.height = cell * board.rows;
+  cv.style.width = cv.width + 'px'; cv.style.height = cv.height + 'px';
+  const css = getComputedStyle(document.documentElement), C = n => css.getPropertyValue(n).trim();
+  ctx.fillStyle = C('--floor'); ctx.fillRect(0, 0, cv.width, cv.height);
+  for (let r = 0; r < board.rows; r++) for (let c = 0; c < board.cols; c++) {
+    const k = key(r, c), x = c*cell, y = r*cell;
+    if (board.walls.has(k)) { ctx.fillStyle = C('--wall'); ctx.fillRect(x+1, y+1, cell-2, cell-2); continue; }
+    if (view.food.has(k)) { ctx.fillStyle = C('--food'); ctx.beginPath(); ctx.arc(x+cell/2, y+cell/2, Math.max(2, cell*.11), 0, Math.PI*2); ctx.fill(); }
+  }
+  const vis = visibleNow(view);
+  const t = anim.cur ? Math.min(1, (performance.now() - anim.t0) / anim.dur) : 1;
+  const pacPos = anim.cur ? lerp(anim.prev.pacman, anim.cur.pacman, t) : view.pacman;
+  const ghoPos = anim.cur ? lerp(anim.prev.ghost, anim.cur.ghost, t) : view.ghost;
+  const diamond = (me, color) => {
+    ctx.save(); ctx.globalAlpha = .10; ctx.fillStyle = color;
+    for (let r = 0; r < board.rows; r++) for (let c = 0; c < board.cols; c++)
+      if (Math.abs(r-me[0]) + Math.abs(c-me[1]) <= 6 && !board.walls.has(key(r, c))) ctx.fillRect(c*cell, r*cell, cell, cell);
+    ctx.restore();
+  };
+  const fog = sel.fog;
+  if (fog === 'pacman') diamond(view.pacman, C('--pac'));
+  else if (fog === 'ghost') diamond(view.ghost, C('--ghost'));
+  else { diamond(view.pacman, C('--pac')); diamond(view.ghost, C('--ghost')); }
+  const token = (pos, color, letter, alpha) => {
+    ctx.save(); ctx.globalAlpha = alpha;
+    ctx.fillStyle = color; ctx.beginPath(); ctx.arc(pos[1]*cell+cell/2, pos[0]*cell+cell/2, cell*.40, 0, Math.PI*2); ctx.fill();
+    ctx.fillStyle = '#0b0f17'; ctx.font = `600 ${Math.max(10, cell*.42)}px -apple-system, Segoe UI, Roboto, sans-serif`;
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(letter, pos[1]*cell+cell/2, pos[0]*cell+cell/2+1);
+    ctx.restore();
+  };
+  const showGhost = fog !== 'pacman' || vis, showPac = fog !== 'ghost' || vis;
+  if (showPac) token(pacPos, C('--pac'), 'P', 1); else if (lastSeen.pacman) token(lastSeen.pacman, C('--pac'), '?', .28);
+  if (showGhost) token(ghoPos, C('--ghost'), 'G', 1); else if (lastSeen.ghost) token(lastSeen.ghost, C('--ghost'), '?', .28);
+}
+let rafOn = false, rafStopper = null;
+function frame() { draw(); if (rafOn) requestAnimationFrame(frame); }
+function startRaf() { if (!rafOn) { rafOn = true; requestAnimationFrame(frame); } }
+function stopRaf() { rafOn = false; }
+window.addEventListener('resize', () => { if (mode === 'replay') draw(); });
+
+// ------------------------------------------------------------------- replay
+function stateAt(upto) {
+  const b = boardOf(rep.game.board), turns = rep.data.turns;
+  let pac = b.pacman.slice(), gho = b.ghost.slice();
+  const food = new Set(b.food.map(x => key(x[0], x[1])));
+  let faults = [0, 0], tick = 1;
+  lastSeen = {pacman:null, ghost:null};
+  for (let i = 0; i < upto; i++) {
+    const [tk, side, , r, c, ate, , fault] = turns[i];
+    if (Math.abs(pac[0]-gho[0]) + Math.abs(pac[1]-gho[1]) <= 6) { lastSeen = {pacman:pac.slice(), ghost:gho.slice()}; }
+    if (side === 0) { pac = [r, c]; if (ate) food.delete(key(r, c)); } else gho = [r, c];
+    if (fault) faults[side] += 1;
+    tick = tk + (side === 1 ? 1 : 0);
+  }
+  return {tick, pacman:pac, ghost:gho, food, eaten: b.food.length - food.size, total: b.food.length, faults, done: upto >= turns.length};
+}
+function logLine(t) {
+  const [tk, side, move, , , ate, skipped, fault] = t;
+  const el = document.createElement('div');
+  el.textContent = `t${String(tk).padStart(3, ' ')} ${side === 0 ? 'P' : 'G'} ${skipped ? 'sits out' : (move || '—').padEnd(4, ' ')}${ate ? ' ate' : ''}`;
+  if (fault) { el.className = 'f'; el.textContent += '  FAULT: ' + fault; }
+  return el;
+}
+function render(jump) {
+  if (!rep.data) return;
+  const prev = view, s = stateAt(rep.idx), g = rep.game;
+  view = s;
+  anim = {prev: jump || !prev ? {pacman:s.pacman, ghost:s.ghost} : {pacman:prev.pacman, ghost:prev.ghost},
+          cur: {pacman:s.pacman, ghost:s.ghost}, t0: performance.now(), dur: Math.max(30, rep.playing ? +$('speed').value / 2 : 120)};
+  const cap = rep.data.max_ticks;
+  $('sTick').textContent = Math.min(s.tick, cap) + ' / ' + cap;
+  $('sTurn').textContent = s.done ? 'over' : (rep.playing ? 'playing' : 'paused');
+  $('sPac').textContent = g.pacman + (s.done ? ` · ${g.pacman_score.toFixed(2)}` : '');
+  $('sGhost').textContent = g.ghost + (s.done ? ` · ${g.ghost_score.toFixed(2)}` : '');
+  $('sFood').textContent = `${s.eaten} / ${s.total} eaten`;
+  $('sFaults').textContent = `${s.faults[0]} / ${s.faults[1]}`;
+  $('slider').value = rep.idx;
+  const log = $('log'); log.innerHTML = '';
+  for (let i = Math.max(0, rep.idx - 16); i < rep.idx; i++) log.appendChild(logLine(rep.data.turns[i]));
+  log.scrollTop = log.scrollHeight;
+  if (s.done) {
+    const how = g.outcome === 'caught' ? `caught at tick ${g.ticks}` : g.outcome === 'cleared' ? `cleared the board in ${g.ticks} ticks` : g.outcome === 'timeout' ? `survived all ${g.ticks} ticks` : g.outcome.replace(/_/g, ' ');
+    $('result').textContent = `RESULT: ${how} · ${g.eaten}/${g.total} eaten · Pac-Man ${g.pacman_score.toFixed(2)} · ghost ${g.ghost_score.toFixed(2)}`;
+    $('result').classList.remove('hidden');
+  } else $('result').classList.add('hidden');
+  startRaf(); clearTimeout(rafStopper);
+  if (!rep.playing) rafStopper = setTimeout(stopRaf, anim.dur + 40);
+}
+function stop() { rep.playing = false; if (rep.handle) clearTimeout(rep.handle); rep.handle = null; $('playBtn').textContent = 'Play'; stopRaf(); }
+function step(d) { if (!rep.data) return; stop(); rep.idx = Math.max(0, Math.min(rep.data.turns.length, rep.idx + d)); render(false); }
+function seek(v) { if (!rep.data) return; stop(); rep.idx = v; render(true); }
+function togglePlay() {
+  if (!rep.data) return;
+  if (rep.playing) { stop(); render(false); return; }
+  if (rep.idx >= rep.data.turns.length) rep.idx = 0;
+  rep.playing = true; $('playBtn').textContent = 'Pause'; startRaf();
+  const fn = () => {
+    if (!rep.playing) return;
+    if (rep.idx >= rep.data.turns.length) { stop(); render(false); return; }
+    rep.idx += 1; render(false);
+    rep.handle = setTimeout(fn, +$('speed').value / 2);       // two moves per tick
+  };
+  fn();
+}
+async function openGame(g) {
+  stop();
+  if (!g) { rep.data = null; rep.game = null; $('hint').textContent = 'No game for this pairing on this board.'; return; }
+  if (rep.game === g && rep.data) return;
+  rep.game = g;
+  let d = rep.cache[g.file];
+  if (!d) {
+    $('hint').textContent = 'loading…';
+    try { d = await (await fetch('data/' + g.file)).json(); rep.cache[g.file] = d; }
+    catch (e) { $('hint').textContent = 'could not load this game'; return; }
+  }
+  if (rep.game !== g) return;
+  const b = boardOf(g.board);
+  board = {rows:b.rows, cols:b.cols, walls:new Set(b.walls.map(x => key(x[0], x[1]))), name:b.name};
+  rep.data = d; rep.idx = 0; view = null;
+  $('slider').max = d.turns.length;
+  $('hint').textContent = `${g.pacman} (Pac-Man) vs ${g.ghost} (ghost) on ${b.label}. Play, step with ◀ ▶ (or the arrow keys), or drag the slider.` +
+    (g.pacman === g.ghost ? ' This is the agent against its own ghost.' : '');
+  render(true);
+}
+
+// ----------------------------------------------------------------- choosing
+function renderReplay() {
+  const pacs = cat.players.map(p => p.name).concat(Object.keys(cat.house).filter(h => cat.house[h] === 'pacman'));
+  const ghosts = cat.players.map(p => p.name).concat(Object.keys(cat.house).filter(h => cat.house[h] === 'ghost'));
+  if (!pacs.includes(sel.pacman)) sel.pacman = pacs[0];
+  if (!cat.boards.some(b => b.name === sel.board)) sel.board = cat.boards[0].name;
+  const have = new Set(cat.games.filter(x => x.pacman === sel.pacman && x.board === sel.board).map(x => x.ghost));
+  if (!have.has(sel.ghost)) sel.ghost = ghosts.find(g => have.has(g) && g !== sel.pacman) || ghosts.find(g => have.has(g)) || sel.ghost;
+  listItems($('pacList'), pacs.map(p => ({value:p, tag:tagOf(p)})), sel.pacman, v => { sel.pacman = v; renderReplay(); });
+  listItems($('ghostList'), ghosts.map(g => ({value:g, tag: g === sel.pacman ? 'own ghost' : tagOf(g), dim:!have.has(g)})), sel.ghost, v => { sel.ghost = v; renderReplay(); });
+  chips($('boardChips'), cat.boards.map(b => ({value:b.name, label:b.label})), sel.board, v => { sel.board = v; renderReplay(); });
+  chips($('fogChips'), [{value:'all', label:'All'}, {value:'pacman', label:'Pac-Man'}, {value:'ghost', label:'Ghost'}], sel.fog, v => { sel.fog = v; renderReplay(); draw(); });
+  history.replaceState(null, '', `#p=${encodeURIComponent(sel.pacman)}&g=${encodeURIComponent(sel.ghost)}&b=${encodeURIComponent(sel.board)}`);
+  openGame(findGame(sel.pacman, sel.ghost, sel.board));
+}
+
+// -------------------------------------------------------------------- table
+function scoreColor(s) {
+  const a = [229, 72, 77], b = [245, 185, 66], t = Math.max(0, Math.min(1, s));
+  return `rgb(${a.map((v, i) => Math.round(v + (b[i] - v) * t)).join(',')})`;
+}
+function renderTable() {
+  chips($('boardChips'), cat.boards.map(b => ({value:b.name, label:b.label})).concat([{value:'all', label:'All boards'}]), tableBoard,
+        v => { tableBoard = v; renderTable(); });
+  const pacs = cat.players.map(p => p.name).concat(Object.keys(cat.house).filter(h => cat.house[h] === 'pacman'));
+  const ghosts = cat.players.map(p => p.name).concat(Object.keys(cat.house).filter(h => cat.house[h] === 'ghost'));
+  const isHouse = n => !!cat.house[n];
+  let h = '<thead><tr><th class="corner">Pac-Man ↓ · ghost →</th>' + ghosts.map(g => `<th class="${isHouse(g) ? 'house' : ''}">${esc(g)}</th>`).join('') + '</tr></thead><tbody>';
+  for (const p of pacs) {
+    h += `<tr><th class="${isHouse(p) ? 'house' : ''}">${esc(p)}</th>`;
+    for (const g of ghosts) {
+      const self = p === g ? 'self' : '';
+      const games = cat.games.filter(x => x.pacman === p && x.ghost === g && (tableBoard === 'all' || x.board === tableBoard));
+      if (!games.length && isHouse(p) && isHouse(g)) { h += '<td></td>'; continue; }
+      if (!games.length) { h += `<td class="${self}"><button class="empty" disabled>·</button></td>`; continue; }
+      const s = games.reduce((a, x) => a + x.pacman_score, 0) / games.length;
+      const tip = `${p} (Pac-Man) vs ${g} (ghost)\n` + games.map(x => `${boardOf(x.board).label}: ${x.outcome}, ${x.pacman_score.toFixed(2)} (${x.eaten}/${x.total} eaten, ${x.ticks} ticks)`).join('\n');
+      h += `<td class="${self}"><button style="background:${scoreColor(s)}" data-p="${esc(p)}" data-g="${esc(g)}" data-b="${esc(games[0].board)}" title="${esc(tip)}">${s.toFixed(2)}</button></td>`;
+    }
+    h += '</tr>';
+  }
+  $('matrix').innerHTML = h + '</tbody>';
+  $('matrix').querySelectorAll('td button:not(.empty)').forEach(b => b.onclick = () => {
+    sel.pacman = b.dataset.p; sel.ghost = b.dataset.g; sel.board = b.dataset.b; setMode('replay');
+  });
+}
+function setMode(m) {
+  mode = m; stop();
+  $('tabReplay').classList.toggle('active', m === 'replay'); $('tabTable').classList.toggle('active', m === 'table');
+  $('replayView').classList.toggle('hidden', m !== 'replay'); $('tableView').classList.toggle('hidden', m !== 'table');
+  ['viewGroup', 'speedGroup', 'playGroup'].forEach(id => $(id).classList.toggle('hidden', m !== 'replay'));
+  if (m === 'replay') { rep.game = null; renderReplay(); }
+  else { if (!tableBoard) tableBoard = sel.board; renderTable(); }
+}
+document.addEventListener('keydown', ev => {
+  if (mode !== 'replay' || ev.target.tagName === 'INPUT') return;
+  if (ev.key === 'ArrowLeft') { step(-1); ev.preventDefault(); }
+  else if (ev.key === 'ArrowRight') { step(1); ev.preventDefault(); }
+  else if (ev.key === ' ') { togglePlay(); ev.preventDefault(); }
+});
+
+(async function init() {
+  try { cat = await (await fetch('data/catalog.json')).json(); }
+  catch (e) { $('note').textContent = 'could not load data/catalog.json'; return; }
+  $('legendBar').style.background = `linear-gradient(90deg, ${scoreColor(0)}, ${scoreColor(.5)}, ${scoreColor(1)})`;
+  $('note').textContent = `${cat.players.filter(p => p.kind === 'student').length} students · ${cat.boards.length} boards · ${cat.games.length} games`;
+  const q = new URLSearchParams(location.hash.slice(1));
+  sel.pacman = q.get('p') || (cat.players.find(p => p.kind === 'student') || {}).name;
+  sel.ghost = q.get('g'); sel.board = q.get('b');
+  setMode('replay');
+})();
+</script>
+</body>
+</html>

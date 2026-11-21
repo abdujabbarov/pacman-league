@@ -1,0 +1,526 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pac-Man League · Arena</title>
+<style>
+  :root { --bg:#0b0f17; --card:#121826; --line:#1f2a3d; --text:#e6edf7; --muted:#8a97ad;
+          --pac:#f5b942; --ghost:#e5484d; --wall:#22304a; --floor:#0d1320; --food:#cbd5e1; --warn:#f0a04b; --ok:#46a758; }
+  * { box-sizing:border-box; }
+  html, body { height:100%; }
+  body { margin:0; background:var(--bg); color:var(--text); font:14px/1.45 -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; display:flex; flex-direction:column; min-height:100vh; }
+  header { display:flex; align-items:center; gap:14px; padding:10px 18px; border-bottom:1px solid var(--line); flex-wrap:wrap; }
+  header h1 { font-size:16px; margin:0 14px 0 0; letter-spacing:.3px; white-space:nowrap; }
+  header .right { margin-left:auto; display:flex; align-items:center; gap:12px; }
+  header .sub { color:var(--muted); font-size:12px; }
+  .tabs { display:flex; gap:6px; }
+  .tabs button { min-width:84px; }
+  .topbar { display:flex; flex-wrap:wrap; align-items:center; gap:8px 18px; padding:10px 18px; border-bottom:1px solid var(--line); background:var(--card); }
+  .group { display:flex; align-items:center; gap:6px; flex-wrap:wrap; }
+  .group > label { color:var(--muted); font-size:11px; text-transform:uppercase; letter-spacing:.08em; margin:0 4px 0 0; }
+  button { font:inherit; color:var(--text); background:#0e1522; border:1px solid var(--line); border-radius:8px; padding:6px 10px; cursor:pointer; }
+  button.primary { background:var(--pac); color:#1a1200; border-color:transparent; font-weight:600; }
+  button.active, .chip.active { border-color:var(--pac); color:var(--pac); }
+  button:disabled { opacity:.45; cursor:default; }
+  .chip { padding:5px 10px; font-size:13px; }
+  input[type=range] { width:120px; vertical-align:middle; }
+  main { display:grid; grid-template-columns:210px minmax(0,1fr) 210px; gap:12px; padding:12px 18px; flex:1; min-height:0; }
+  @media (max-width: 1000px) { main { grid-template-columns:1fr; } }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:12px; min-width:0; }
+  .card h2 { font-size:12px; text-transform:uppercase; letter-spacing:.12em; color:var(--muted); margin:0 0 10px; }
+  .list { display:flex; flex-direction:column; gap:6px; max-height:calc(100vh - 230px); overflow:auto; }
+  .item { text-align:left; display:flex; justify-content:space-between; align-items:center; gap:8px; padding:8px 10px; }
+  .item .tag { font-size:10px; text-transform:uppercase; letter-spacing:.08em; color:var(--muted); }
+  .item.sel { border-color:var(--pac); background:#1a2235; }
+  .pane.gho .item.sel { border-color:var(--ghost); }
+  .centre { display:flex; flex-direction:column; gap:12px; min-width:0; }
+  .boardcard { display:flex; justify-content:center; align-items:center; padding:10px; }
+  canvas { display:block; background:var(--floor); border-radius:10px; }
+  .status { display:flex; flex-wrap:wrap; gap:6px 22px; font-variant-numeric:tabular-nums; }
+  .status div b { color:var(--muted); font-weight:500; display:block; font-size:10px; text-transform:uppercase; letter-spacing:.08em; }
+  .big { font-size:18px; font-weight:600; }
+  .pac { color:var(--pac); } .gho { color:var(--ghost); }
+  .hint { margin-top:8px; padding:8px 10px; border-radius:8px; background:#0e1522; border:1px dashed var(--line); color:var(--muted); font-size:13px; }
+  .hint.need { border-color:var(--pac); color:var(--text); }
+  .result { margin-top:8px; padding:8px 10px; border-radius:8px; background:#0e1522; border:1px solid var(--line); font-weight:600; }
+  .log { margin-top:8px; height:96px; overflow:auto; font:12px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; color:var(--muted); white-space:pre; column-count:2; column-gap:18px; }
+  .log .f { color:var(--warn); }
+  .small { color:var(--muted); font-size:12px; }
+  .hidden { display:none !important; }
+
+  /* ranking */
+  #rankView { padding:12px 18px; display:flex; flex-direction:column; gap:12px; }
+  table { border-collapse:collapse; font-variant-numeric:tabular-nums; }
+  .rank td, .rank th { padding:6px 12px; border-bottom:1px solid var(--line); text-align:right; white-space:nowrap; }
+  .rank td:nth-child(2), .rank th:nth-child(2) { text-align:left; }
+  th { color:var(--muted); font-weight:500; font-size:11px; text-transform:uppercase; letter-spacing:.08em; }
+  .rank tr.ref td { color:var(--muted); font-style:italic; }
+  .rank td.lg { font-weight:700; color:var(--pac); }
+  .yes { color:var(--ok); } .no { color:var(--ghost); }
+  .scroll { overflow:auto; }
+  .matrix th, .matrix td { padding:0; border:1px solid var(--bg); }
+  .matrix thead th { font-size:11px; padding:6px 4px; vertical-align:bottom; color:var(--ghost); text-transform:none; letter-spacing:0; min-width:64px; }
+  .matrix tbody th { text-align:right; padding:0 10px; color:var(--pac); text-transform:none; letter-spacing:0; font-size:12px; white-space:nowrap; }
+  .matrix thead th.corner { color:var(--muted); text-align:right; font-size:10px; text-transform:uppercase; letter-spacing:.08em; }
+  .matrix .house { opacity:.75; font-style:italic; }
+  .matrix td button { width:100%; min-width:64px; height:34px; border:0; border-radius:4px; padding:0 6px; font-size:13px; font-variant-numeric:tabular-nums; color:#0b0f17; font-weight:600; }
+  .matrix td button.empty { background:#0e1522; color:var(--muted); font-weight:400; }
+  .matrix td.self button { outline:2px dashed var(--text); outline-offset:-4px; }
+  .legend { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+  .legend .bar { width:160px; height:10px; border-radius:5px; }
+
+  /* background-job drawer */
+  #drawer { position:fixed; right:18px; bottom:18px; width:min(560px, calc(100vw - 36px)); max-height:70vh; display:flex; flex-direction:column; gap:8px; z-index:5; box-shadow:0 12px 40px rgba(0,0,0,.5); }
+  #drawer .head { display:flex; align-items:center; gap:10px; }
+  #drawer .head b { flex:1; }
+  .progress { height:6px; border-radius:3px; background:#0e1522; overflow:hidden; }
+  .progress > div { height:100%; background:var(--pac); width:0; transition:width .3s; }
+  #drawerBody { overflow:auto; font-size:13px; }
+  #drawerBody pre { margin:0; font:12px/1.5 ui-monospace, Menlo, monospace; color:var(--muted); white-space:pre-wrap; }
+  .sub-row { border-top:1px solid var(--line); padding:8px 0; }
+  .sub-row .t { display:flex; gap:10px; align-items:baseline; }
+  .sub-row .t b { min-width:120px; }
+  .sub-row ul { margin:4px 0 0; padding-left:18px; color:var(--muted); }
+  .sub-row li.fail { color:var(--ghost); } .sub-row li.warn { color:var(--warn); }
+</style>
+</head>
+<body>
+<header>
+  <h1>Pac-Man League · Arena</h1>
+  <div class="tabs">
+    <button id="tabLive" class="active" onclick="setMode('live')">Play</button>
+    <button id="tabRank" onclick="setMode('rank')">Ranking</button>
+  </div>
+  <div class="right">
+    <span class="sub" id="serverNote">connecting…</span>
+    <button id="btnLoad" onclick="loadSubmissions()" title="Find every agent in ../Submission, check it against the assignment rules, and load the ones that pass">Load submissions</button>
+  </div>
+</header>
+
+<!-- ---------------------------------------------------------------- play -->
+<div class="topbar" id="liveBar">
+  <div class="group"><label>Board</label><span id="boardChips"></span></div>
+  <div class="group"><label>View</label><span id="fogChips"></span></div>
+  <div class="group"><label>Speed</label><input type="range" id="tickMs" min="80" max="400" step="10" value="120" oninput="document.getElementById('tickLabel').textContent=this.value"><span class="small"><span id="tickLabel">120</span> ms/tick</span></div>
+  <div class="group">
+    <button class="primary" id="btnStart" onclick="startLive()">Start</button>
+    <button id="btnPause" onclick="togglePause()" disabled>Pause</button>
+  </div>
+</div>
+
+<main id="playView">
+  <aside class="card pane pac"><h2 class="pac">Pac-Man</h2><div class="list" id="pacList"></div></aside>
+  <section class="centre">
+    <div class="card boardcard"><canvas id="board" width="630" height="450"></canvas></div>
+    <div class="card">
+      <div class="status">
+        <div><b>Tick</b><span class="big" id="sTick">–</span></div>
+        <div><b>Status</b><span class="big" id="sTurn">–</span></div>
+        <div><b class="pac">Pac-Man</b><span id="sPac">–</span></div>
+        <div><b class="gho">Ghost</b><span id="sGhost">–</span></div>
+        <div><b>Food</b><span id="sFood">–</span></div>
+        <div><b>Faults P / G</b><span id="sFaults">–</span></div>
+      </div>
+      <div class="hint" id="hint">Pick a Pac-Man on the left, a ghost on the right, a board on top — then Start.</div>
+      <div class="result hidden" id="result"></div>
+      <div class="log" id="log"></div>
+    </div>
+  </section>
+  <aside class="card pane gho"><h2 class="gho">Ghost</h2><div class="list" id="ghostList"></div></aside>
+</main>
+
+<!-- ------------------------------------------------------------- ranking -->
+<div class="topbar hidden" id="rankBar">
+  <div class="group"><label>Boards</label><span id="scopeChips"></span></div>
+  <div class="group">
+    <button class="primary" id="btnPlayAll" onclick="playAll()" title="Play every game that is missing or whose agent file changed, one at a time">Play all games</button>
+    <span class="small" id="coverage"></span>
+  </div>
+</div>
+<section id="rankView" class="hidden">
+  <div class="card">
+    <h2>Ranking</h2>
+    <div class="scroll"><table class="rank" id="rankTable"></table></div>
+    <p class="small" id="rankNote"></p>
+  </div>
+  <div class="card">
+    <h2>Games · Pac-Man (rows) against ghost (columns)</h2>
+    <div class="legend small"><span>Pac-Man score:</span><span>0</span><span class="bar" id="legendBar"></span><span>1</span>
+      <span>· dashed = against its own ghost (played, not counted) · click a cell to play that game</span></div>
+    <div class="scroll" style="margin-top:10px"><table class="matrix" id="matrix"></table></div>
+  </div>
+</section>
+
+<!-- ------------------------------------------------------ background job -->
+<div class="card hidden" id="drawer">
+  <div class="head"><b id="drawerTitle">Working…</b><span class="small" id="drawerCount"></span>
+    <button id="drawerStop" onclick="stopJob()">Stop</button><button id="drawerClose" onclick="$('drawer').classList.add('hidden')">Close</button></div>
+  <div class="progress"><div id="drawerBar"></div></div>
+  <div id="drawerBody"></div>
+</div>
+
+<script>
+// ------------------------------------------------------------------ shared
+const $ = id => document.getElementById(id);
+const DIRS = {N:[-1,0], S:[1,0], E:[0,1], W:[0,-1]};
+const HOUSE = new Set(['baseline_pacman', 'baseline_ghost', 'random_ghost']);
+let mode = 'live';
+let board = null, view = null, fogSide = 'all';
+let lastSeen = {pacman:null, ghost:null};
+let labels = {pacman:'', ghost:''};
+let anim = {prev:null, cur:null, t0:0, dur:120};
+let catalogue = {agents:[], boards:[]};
+let sel = {pacman:'human', ghost:null, board:null, fog:'all'};
+let scope = 'test';
+let jobBusy = false;
+
+const key = (r,c) => r + ',' + c;
+const esc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+function setBoard(b) { board = {rows:b.rows, cols:b.cols, walls:new Set(b.walls.map(x=>key(x[0],x[1]))), name:b.name}; lastSeen = {pacman:null, ghost:null}; }
+function visibleNow(v) { return Math.abs(v.pacman[0]-v.ghost[0]) + Math.abs(v.pacman[1]-v.ghost[1]) <= 6; }
+function legalDirs(pos) { const out = {}; for (const d in DIRS) { const n = [pos[0]+DIRS[d][0], pos[1]+DIRS[d][1]]; if (!board.walls.has(key(n[0], n[1]))) out[d] = n; } return out; }
+function setAnim(prevView, curView, dur) {
+  anim = {prev: prevView ? {pacman: prevView.pacman, ghost: prevView.ghost} : {pacman: curView.pacman, ghost: curView.ghost},
+          cur: {pacman: curView.pacman, ghost: curView.ghost}, t0: performance.now(), dur: Math.max(30, dur)};
+}
+function chips(holder, items, current, onPick) {
+  holder.innerHTML = '';
+  items.forEach(it => { const b = document.createElement('button'); b.className = 'chip' + (it.value === current ? ' active' : ''); b.textContent = it.label; b.onclick = () => onPick(it.value); holder.appendChild(b); });
+}
+function listItems(holder, items, current, onPick) {
+  holder.innerHTML = '';
+  items.forEach(it => {
+    const b = document.createElement('button'); b.className = 'item' + (it.value === current ? ' sel' : '');
+    b.innerHTML = `<span>${esc(it.label)}</span><span class="tag">${esc(it.tag || '')}</span>`; b.onclick = () => onPick(it.value); holder.appendChild(b);
+  });
+  if (!items.length) holder.innerHTML = '<div class="small">nothing here yet</div>';
+}
+function labelOf(name) { return name === 'human' ? 'you' : (name.startsWith('agent_') ? name.slice(6) : name); }
+function nameOf(owner) { return HOUSE.has(owner) ? owner : 'agent_' + owner; }
+function boardLabel(name) { const b = catalogue.boards.find(x => x.name === name); return b ? b.label : name; }
+
+// ---------------------------------------------------------------- drawing
+function lerp(a, b, t) { return [a[0] + (b[0]-a[0])*t, a[1] + (b[1]-a[1])*t]; }
+function draw() {
+  const cv = $('board'), ctx = cv.getContext('2d');
+  if (!board || !view) { ctx.clearRect(0,0,cv.width,cv.height); return; }
+  const holder = cv.parentElement;
+  const W = (holder.clientWidth || 600) - 20;
+  const H = Math.max(300, window.innerHeight - 330);
+  const cell = Math.max(8, Math.floor(Math.min(W / board.cols, H / board.rows)));
+  cv.width = cell * board.cols; cv.height = cell * board.rows;
+  cv.style.width = cv.width + 'px'; cv.style.height = cv.height + 'px';
+  const css = getComputedStyle(document.documentElement);
+  const C = n => css.getPropertyValue(n).trim();
+  ctx.fillStyle = C('--floor'); ctx.fillRect(0,0,cv.width,cv.height);
+  const foodSet = new Set(view.food.map(x=>key(x[0],x[1])));
+  for (let r=0;r<board.rows;r++) for (let c=0;c<board.cols;c++) {
+    const k = key(r,c), x = c*cell, y = r*cell;
+    if (board.walls.has(k)) { ctx.fillStyle = C('--wall'); ctx.fillRect(x+1,y+1,cell-2,cell-2); continue; }
+    if (foodSet.has(k)) { ctx.fillStyle = C('--food'); ctx.beginPath(); ctx.arc(x+cell/2, y+cell/2, Math.max(2, cell*.11), 0, Math.PI*2); ctx.fill(); }
+  }
+  const vis = visibleNow(view);
+  if (vis) { lastSeen.pacman = {pos:view.pacman, tick:view.tick}; lastSeen.ghost = {pos:view.ghost, tick:view.tick}; }
+  const t = anim.cur ? Math.min(1, (performance.now() - anim.t0) / anim.dur) : 1;
+  const pacPos = anim.cur ? lerp(anim.prev.pacman, anim.cur.pacman, t) : view.pacman;
+  const ghoPos = anim.cur ? lerp(anim.prev.ghost, anim.cur.ghost, t) : view.ghost;
+  const diamond = (me, color) => {
+    ctx.save(); ctx.globalAlpha = .10; ctx.fillStyle = color;
+    for (let r=0;r<board.rows;r++) for (let c=0;c<board.cols;c++)
+      if (Math.abs(r-me[0])+Math.abs(c-me[1]) <= 6 && !board.walls.has(key(r,c))) ctx.fillRect(c*cell, r*cell, cell, cell);
+    ctx.restore();
+  };
+  if (fogSide === 'pacman') diamond(view.pacman, C('--pac'));
+  else if (fogSide === 'ghost') diamond(view.ghost, C('--ghost'));
+  else { diamond(view.pacman, C('--pac')); diamond(view.ghost, C('--ghost')); }
+  const token = (pos, color, letter, alpha) => {
+    ctx.save(); ctx.globalAlpha = alpha;
+    ctx.fillStyle = color; ctx.beginPath(); ctx.arc(pos[1]*cell+cell/2, pos[0]*cell+cell/2, cell*.40, 0, Math.PI*2); ctx.fill();
+    ctx.fillStyle = '#0b0f17'; ctx.font = `600 ${Math.max(10, cell*.42)}px -apple-system, Segoe UI, Roboto, sans-serif`;
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(letter, pos[1]*cell+cell/2, pos[0]*cell+cell/2+1);
+    ctx.restore();
+  };
+  const showGhost = fogSide !== 'pacman' || vis, showPac = fogSide !== 'ghost' || vis;
+  if (showPac) token(pacPos, C('--pac'), 'P', 1); else if (lastSeen.pacman) token(lastSeen.pacman.pos, C('--pac'), '?', .28);
+  if (showGhost) token(ghoPos, C('--ghost'), 'G', 1); else if (lastSeen.ghost) token(lastSeen.ghost.pos, C('--ghost'), '?', .28);
+}
+let rafOn = false;
+function frame() { draw(); if (rafOn) requestAnimationFrame(frame); }
+function startRaf() { if (!rafOn) { rafOn = true; requestAnimationFrame(frame); } }
+function stopRaf() { rafOn = false; }
+window.addEventListener('resize', () => { if (mode === 'live') draw(); });
+
+function showStatus(v, statusText) {
+  const cap = live.maxTicks;
+  $('sTick').textContent = cap && cap < 100000 ? Math.min(v.tick, cap) + ' / ' + cap : v.tick;
+  $('sTurn').textContent = statusText || (v.done ? 'over' : 'playing');
+  $('sPac').textContent = labels.pacman + (v.pacman_score != null ? ` · ${v.pacman_score.toFixed(2)}` : '');
+  $('sGhost').textContent = labels.ghost + (v.ghost_score != null ? ` · ${v.ghost_score.toFixed(2)}` : '');
+  $('sFood').textContent = `${v.eaten} / ${v.total} eaten`;
+  $('sFaults').textContent = `${v.faults.pacman} / ${v.faults.ghost}`;
+}
+function logEvent(e) {
+  if (!e) return;
+  let s = `t${String(e.tick).padStart(3,' ')} ${e.who === 'pacman' ? 'P' : 'G'} ${e.skipped ? 'sits out' : (e.move||'—').padEnd(4,' ')}`;
+  if (e.ate) s += ' ate';
+  const el = document.createElement('div'); el.textContent = s;
+  if (e.fault) { el.className = 'f'; el.textContent += '  FAULT: ' + String(e.fault).replace(/:\s*[\d.]+\s*ms/, ''); }
+  const log = $('log'); log.appendChild(el);
+  while (log.childElementCount > 300) log.removeChild(log.firstChild);
+  log.scrollTop = log.scrollHeight;
+}
+
+// ---------------------------------------------------------- catalogue / UI
+async function api(path, body) {
+  const r = await fetch(path, body ? {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body)} : {});
+  return r.json();
+}
+async function refreshCatalogue() {
+  const l = await api('/api/list'); catalogue = l;
+  const students = l.agents.filter(a => a.kind === 'student').length;
+  $('serverNote').textContent = `${students} student agent${students === 1 ? '' : 's'} · ${l.boards.length} boards`;
+  if (!l.boards.some(b => b.name === sel.board)) sel.board = (l.boards[0] || {}).name || null;
+  const names = new Set(l.agents.map(a => a.name));
+  if (sel.pacman !== 'human' && !names.has(sel.pacman)) sel.pacman = 'human';
+  if (!sel.ghost || (sel.ghost !== 'human' && !names.has(sel.ghost))) {
+    const firstGhost = l.agents.find(a => a.kind === 'student') || l.agents.find(a => a.name === 'baseline_ghost');
+    sel.ghost = firstGhost ? firstGhost.name : 'human';
+  }
+}
+async function init() {
+  try {
+    await refreshCatalogue();
+    if (location.hash === '#ranking') setMode('rank'); else { renderLive(); previewBoard(); }
+    const j = await api('/api/job'); if (j.running) { showDrawer(); pollJob(); }
+  } catch (e) {
+    $('serverNote').textContent = 'no server — run  python arena.py';
+  }
+}
+function renderLive() {
+  const pacs = [{value:'human', label:'you', tag:'keyboard'}]
+    .concat(catalogue.agents.filter(a => a.side !== 'ghost').map(a => ({value:a.name, label:a.label, tag:a.kind})));
+  const ghosts = [{value:'human', label:'you', tag:'keyboard'}]
+    .concat(catalogue.agents.filter(a => a.side !== 'pacman').map(a => ({value:a.name, label:a.label, tag:a.kind})));
+  const idle = () => !(live.id && view && !view.done);
+  listItems($('pacList'), pacs, sel.pacman, v => { sel.pacman = v; renderLive(); if (idle()) { labels.pacman = labelOf(v); showStatus(view || blankView(), 'ready'); } });
+  listItems($('ghostList'), ghosts, sel.ghost, v => { sel.ghost = v; renderLive(); if (idle()) { labels.ghost = labelOf(v); showStatus(view || blankView(), 'ready'); } });
+  chips($('boardChips'), catalogue.boards.map(b => ({value:b.name, label:b.label})), sel.board, v => { sel.board = v; renderLive(); previewBoard(); });
+  chips($('fogChips'), [{value:'all',label:'All'},{value:'pacman',label:'Pac-Man'},{value:'ghost',label:'Ghost'}], sel.fog,
+        v => { sel.fog = v; fogSide = v; renderLive(); draw(); });
+  $('btnStart').disabled = jobBusy;
+}
+function blankView() { return {tick:1,eaten:0,total:0,faults:{pacman:0,ghost:0}}; }
+// show the selected board (start position) before a game starts
+async function previewBoard() {
+  if (!sel.board) return;
+  if (live.id && view && !view.done) return;              // never disturb a running game
+  try {
+    const b = await api('/api/board?name=' + encodeURIComponent(sel.board));
+    if (b.error) return;
+    live.id = null; stopRaf();
+    setBoard(b);
+    view = {tick:1, pacman:b.pacman, ghost:b.ghost, food:b.food, eaten:0, total:b.food.length, faults:{pacman:0, ghost:0}, done:false};
+    labels = {pacman: labelOf(sel.pacman), ghost: labelOf(sel.ghost)};
+    fogSide = sel.fog; setAnim(null, view, 100); draw(); showStatus(view, 'ready');
+    $('result').classList.add('hidden'); $('log').innerHTML = '';
+  } catch (e) {}
+}
+function setMode(m) {
+  mode = m;
+  $('tabLive').classList.toggle('active', m === 'live'); $('tabRank').classList.toggle('active', m === 'rank');
+  $('liveBar').classList.toggle('hidden', m !== 'live'); $('playView').classList.toggle('hidden', m !== 'live');
+  $('rankBar').classList.toggle('hidden', m !== 'rank'); $('rankView').classList.toggle('hidden', m !== 'rank');
+  if (m === 'live') { renderLive(); if (!(live.id && view && !view.done)) previewBoard(); else draw(); }
+  else { loadRanking(); }
+}
+
+// ------------------------------------------------------------------- live
+let live = {id:null, paused:false, humans:{}, timer:null, busy:false, held:{pacman:[], ghost:[]}, maxTicks:300};
+async function startLive() {
+  stopLive();
+  if (!sel.board || !sel.pacman || !sel.ghost) return;
+  const res = await api('/api/new', {pacman:sel.pacman, ghost:sel.ghost, board:sel.board});
+  if (res.error) { alert(res.error); return; }
+  live.id = res.id; live.humans = {pacman: sel.pacman==='human', ghost: sel.ghost==='human'}; live.paused = false;
+  live.maxTicks = res.rules ? res.rules.max_ticks : 300;
+  live.held = {pacman:[], ghost:[]};
+  labels = res.labels; setBoard(res.board); view = res.view; fogSide = sel.fog;
+  setAnim(null, view, +$('tickMs').value);
+  $('log').innerHTML=''; $('result').classList.add('hidden');
+  $('btnPause').disabled = false; $('btnPause').textContent = 'Pause';
+  const h = live.humans;
+  $('hint').className = 'hint need';
+  $('hint').textContent = h.pacman && h.ghost ? 'Hold arrows to move Pac-Man, W A S D to move the ghost. Go!'
+    : h.pacman ? 'Hold an arrow key to move Pac-Man; release to stop. No tick limit: eat everything or get caught. Go!'
+    : h.ghost ? 'Hold an arrow key to move the ghost; release to stop. No tick limit: catch Pac-Man before the food is gone. Go!'
+    : 'Agents are playing. P pauses.';
+  showStatus(view, 'playing'); startRaf();
+  live.timer = setTimeout(tick, +$('tickMs').value);
+}
+function stopLive() { if (live.timer) clearTimeout(live.timer); live.timer = null; }
+function moveFromKeys(side) {
+  const legal = legalDirs(view[side]), held = live.held[side];
+  const d = held.length ? held[held.length - 1] : null;
+  return (d && legal[d]) ? d : 'STOP';          // for a human ghost the server treats STOP as 'stay'
+}
+async function tick() {
+  live.timer = null;
+  if (!live.id || live.paused || (view && view.done) || live.busy) return;
+  live.busy = true;
+  const t0 = performance.now(), tickMs = +$('tickMs').value, prev = view;
+  try {
+    let res = await api('/api/turn', live.humans.pacman ? {id: live.id, move: moveFromKeys('pacman')} : {id: live.id});
+    logEvent(res.event); view = res.view;
+    if (!res.done) {
+      res = await api('/api/turn', (live.humans.ghost && res.needs === 'ghost') ? {id: live.id, move: moveFromKeys('ghost')} : {id: live.id});
+      logEvent(res.event); view = res.view;
+    }
+    setAnim(prev, view, tickMs);
+    showStatus(view, live.paused ? 'paused' : 'playing');
+    if (res.done) {
+      $('result').textContent = res.result_line.replace(/:\s*[\d.]+\s*ms/g, ''); $('result').classList.remove('hidden');
+      $('hint').className = 'hint'; $('hint').textContent = 'Game over. Pick another pairing or press Start again.';
+      $('btnPause').disabled = true; showStatus(view, 'over');
+      setTimeout(stopRaf, tickMs + 50);
+      return;
+    }
+  } finally { live.busy = false; }
+  if (!live.paused) live.timer = setTimeout(tick, Math.max(0, tickMs - (performance.now() - t0)));
+}
+function togglePause() {
+  if (!live.id || (view && view.done)) return;
+  live.paused = !live.paused; $('btnPause').textContent = live.paused ? 'Resume' : 'Pause';
+  showStatus(view, live.paused ? 'paused' : 'playing');
+  stopLive(); if (!live.paused) live.timer = setTimeout(tick, 0);
+}
+const ARROWS = {ArrowUp:'N', ArrowLeft:'W', ArrowDown:'S', ArrowRight:'E'};
+const WASD = {w:'N', a:'W', s:'S', d:'E', W:'N', A:'W', S:'S', D:'E'};
+function keySide(k) {
+  const h = live.humans;
+  const arrowSide = h.pacman ? 'pacman' : (h.ghost ? 'ghost' : null);
+  const wasdSide = (h.pacman && h.ghost) ? 'ghost' : arrowSide;
+  if (k in ARROWS && arrowSide) return [arrowSide, ARROWS[k]];
+  if (k in WASD && wasdSide) return [wasdSide, WASD[k]];
+  return null;
+}
+document.addEventListener('keydown', ev => {
+  if (mode !== 'live' || !live.id) return;
+  if (ev.key === 'p' || ev.key === 'P') { togglePause(); ev.preventDefault(); return; }
+  const ks = keySide(ev.key); if (!ks) return;
+  ev.preventDefault();
+  if (ev.repeat) return;
+  const [side, d] = ks;
+  live.held[side] = live.held[side].filter(x => x !== d).concat([d]);
+});
+document.addEventListener('keyup', ev => {
+  const ks = keySide(ev.key); if (!ks) return;
+  const [side, d] = ks;
+  live.held[side] = live.held[side].filter(x => x !== d);
+});
+window.addEventListener('blur', () => { live.held = {pacman:[], ghost:[]}; });
+
+// ---------------------------------------------------------------- ranking
+const f3 = x => x == null ? '–' : x.toFixed(3);
+function scoreColor(s) {       // 0 = ghost red, 1 = Pac-Man gold
+  const a = [229, 72, 77], b = [245, 185, 66], t = Math.max(0, Math.min(1, s));
+  return `rgb(${a.map((v, i) => Math.round(v + (b[i] - v) * t)).join(',')})`;
+}
+$('legendBar').style.background = `linear-gradient(90deg, ${scoreColor(0)}, ${scoreColor(.5)}, ${scoreColor(1)})`;
+async function loadRanking() {
+  const scopes = [{value:'test', label:'Test boards (league)'}, {value:'training', label:'Training boards'}, {value:'all', label:'All boards'}]
+    .concat(catalogue.boards.map(b => ({value:b.name, label:b.label})));
+  chips($('scopeChips'), scopes, scope, v => { scope = v; loadRanking(); });
+  $('btnPlayAll').disabled = jobBusy;
+  let t;
+  try { t = await api('/api/ranking?scope=' + encodeURIComponent(scope)); } catch (e) { return; }
+  $('coverage').textContent = `${t.played} / ${t.expected} games played on ${t.boards.map(boardLabel).join(', ')}`;
+  const tag = r => r.kind === 'instructor' ? ' <span class="small">(instructor, not ranked)</span>' : '';
+  const yn = x => x == null ? '–' : (x > .5 ? `<span class="yes">✓ ${x.toFixed(2)}</span>` : `<span class="no">✗ ${x.toFixed(2)}</span>`);
+  $('rankTable').innerHTML = '<thead><tr><th>Rank</th><th>Player</th><th>Pac-Man avg</th><th>Ghost avg</th><th>League score</th>' +
+    '<th>Games P / G</th><th>Vs house P</th><th>Vs house G</th><th>Faults</th></tr></thead><tbody>' +
+    t.rows.map(r => `<tr class="${r.kind === 'student' ? '' : 'ref'}"><td>${r.rank || '–'}</td><td>${esc(r.owner)}${tag(r)}</td>` +
+      `<td>${f3(r.pac_avg)}</td><td>${f3(r.ghost_avg)}</td><td class="lg">${f3(r.league)}</td>` +
+      `<td>${r.pac_games}/${r.pac_expected} · ${r.ghost_games}/${r.ghost_expected}</td><td>${yn(r.house_pac)}</td><td>${yn(r.house_ghost)}</td><td>${r.faults}</td></tr>`).join('') + '</tbody>';
+  $('rankNote').textContent = 'Pac-Man avg: against every other player\'s ghost and the random ghost. Ghost avg: against every other player\'s Pac-Man. ' +
+    'League score = mean of the two (ties: Pac-Man avg). Games against your own ghost are not counted. Vs house: Pac-Man vs baseline + random ghost, ghost vs baseline Pac-Man (above 0.5 = ✓).';
+  const isHouse = o => HOUSE.has(o);
+  let h = '<thead><tr><th class="corner">Pac-Man ↓ · ghost →</th>' + t.ghosts.map(g => `<th class="${isHouse(g) ? 'house' : ''}">${esc(g)}</th>`).join('') + '</tr></thead><tbody>';
+  for (const p of t.pacmen) {
+    h += `<tr><th class="${isHouse(p) ? 'house' : ''}">${esc(p)}</th>`;
+    for (const g of t.ghosts) {
+      const c = t.cells[p + '|' + g];
+      const self = p === g ? ' self' : '';
+      if (!c && isHouse(p) && isHouse(g)) { h += '<td></td>'; continue; }
+      if (!c) { h += `<td class="${self}"><button class="empty" data-p="${esc(p)}" data-g="${esc(g)}" title="not played yet">·</button></td>`; continue; }
+      const tip = `${p} (Pac-Man) vs ${g} (ghost)` + (self ? ' — own ghost, not counted' : '') + '\n' +
+        c.games.map(x => `${boardLabel(x.board)}: ${x.outcome}, ${x.pacman_score.toFixed(2)} (${x.eaten}/${x.total} eaten, ${x.ticks} ticks)`).join('\n');
+      h += `<td class="${self}"><button style="background:${scoreColor(c.pacman_score)}" data-p="${esc(p)}" data-g="${esc(g)}" title="${esc(tip)}">${c.pacman_score.toFixed(2)}</button></td>`;
+    }
+    h += '</tr>';
+  }
+  $('matrix').innerHTML = h + '</tbody>';
+  $('matrix').querySelectorAll('td button').forEach(b => b.onclick = () => {
+    sel.pacman = nameOf(b.dataset.p); sel.ghost = nameOf(b.dataset.g);
+    if (catalogue.boards.some(x => x.name === scope)) sel.board = scope;
+    else if (scope === 'training' || scope === 'test') { const bb = catalogue.boards.find(x => x.kind === scope); if (bb) sel.board = bb.name; }
+    stopLive(); live.id = null; setMode('live');
+  });
+}
+
+// --------------------------------------------------------- background jobs
+let pollTimer = null;
+function showDrawer() { $('drawer').classList.remove('hidden'); }
+async function loadSubmissions() {
+  const r = await api('/api/load_submissions', {});
+  if (!r.started) alert('Another job is still running.');
+  showDrawer(); pollJob();
+}
+async function playAll() {
+  const r = await api('/api/play_all', {});
+  if (!r.started) alert('Another job is still running.');
+  showDrawer(); pollJob();
+}
+async function stopJob() { await api('/api/stop_job', {}); }
+function setBusy(b) {
+  jobBusy = b;
+  $('btnLoad').disabled = b; $('btnPlayAll').disabled = b; $('btnStart').disabled = b;
+}
+async function pollJob() {
+  if (pollTimer) clearTimeout(pollTimer);
+  let j;
+  try { j = await api('/api/job'); } catch (e) { return; }
+  setBusy(j.running);
+  const title = j.kind === 'load' ? 'Load submissions' : 'Play all games';
+  $('drawerTitle').textContent = title + (j.running ? ' — running…' : (j.error ? ' — failed' : ' — done'));
+  $('drawerCount').textContent = j.total ? `${j.done} / ${j.total}` : '';
+  $('drawerBar').style.width = j.total ? (100 * j.done / j.total) + '%' : (j.running ? '5%' : '100%');
+  $('drawerStop').classList.toggle('hidden', !(j.running && j.kind === 'play'));
+  $('drawerClose').classList.toggle('hidden', j.running);
+  const body = $('drawerBody');
+  if (j.error) body.innerHTML = `<pre class="no">${esc(j.error)}</pre>`;
+  else if (!j.running && j.kind === 'load' && Array.isArray(j.report)) body.innerHTML = renderSubReport(j.report);
+  else if (!j.running && j.kind === 'play' && j.report) body.innerHTML = `<pre>${j.report.played ? esc(j.report.played + ' games played.') : 'Every game is up to date — nothing to play.'}</pre>`;
+  else { body.innerHTML = `<pre>${esc(j.log.slice(-14).join('\n') || 'starting…')}</pre>`; }
+  if (j.running) { pollTimer = setTimeout(pollJob, 800); return; }
+  if (j.kind === 'load') { await refreshCatalogue(); renderLive(); }
+  if (mode === 'rank') loadRanking();
+}
+function renderSubReport(rep) {
+  const loaded = rep.filter(e => e.loaded).length;
+  let h = `<p>${loaded} of ${rep.length} submissions loaded into <code>agents/</code>. Each was checked with <code>check_submission.py</code> on the three training boards.` +
+          (loaded ? ' Open <b>Ranking → Play all games</b> to play the games of any new or changed agent.' : '') + '</p>';
+  for (const e of rep) {
+    const st = e.loaded ? `<span class="yes">loaded${e.changed ? ' (new/changed)' : ''}</span>` : `<span class="no">not loaded</span>`;
+    const items = e.notes.map(n => `<li>${esc(n)}</li>`).concat(e.checks.filter(c => c.level !== 'ok').map(c => `<li class="${c.level}">${c.level.toUpperCase()}: ${esc(c.text)}</li>`));
+    const okN = e.checks.filter(c => c.level === 'ok').length;
+    h += `<div class="sub-row"><div class="t"><b>${esc(e.owner)}</b>${st}<span class="small">${esc(e.source)} · ${okN}/${e.checks.length} checks OK</span></div>` +
+         (items.length ? `<ul>${items.join('')}</ul>` : '') + '</div>';
+  }
+  return h;
+}
+
+init();
+</script>
+</body>
+</html>
