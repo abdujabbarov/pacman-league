@@ -3,6 +3,7 @@
 
   python make_board.py --seed 303 --out boards_hidden/hidden3.txt        # 15 x 21, the league size
   python make_board.py --seed 303 --show                                  # print it, do not save
+  python make_board.py --seed 909 --loops 0.5 --dead-ends 0 --rooms --out ../league_platform/boards/new3.txt   # open areas
 
 Rows and columns must be odd (the maze mirrors left-right around the middle column).
 The maze is a seeded perfect maze with loops added and dead ends removed, so it plays like
@@ -84,6 +85,19 @@ def generate(rows, cols, seed, loops=0.30, max_dead_ends=2):
     return ["".join(row) for row in grid]
 
 
+def add_rooms(lines):
+    """Open areas: two 5x5 rooms (mirrored) and a 3x5 hall near the bottom middle. For 15 x 21 boards."""
+    grid = [list(l) for l in lines]
+    cols = len(grid[0])
+    for r0, r1, c0, c1 in ((3, 7, 3, 7), (9, 11, 8, 10)):
+        for r in range(r0, r1 + 1):
+            for c in range(c0, c1 + 1):
+                for cc in (c, cols - 1 - c):
+                    if grid[r][cc] == "#":
+                        grid[r][cc] = "."
+    return ["".join(row) for row in grid]
+
+
 def stats(lines):
     rows, cols = len(lines), len(lines[0])
     walls = {(r, c) for r in range(rows) for c in range(cols) if lines[r][c] == "#"}
@@ -108,10 +122,13 @@ def main(argv=None):
     ap.add_argument("--seed", type=int, required=True)
     ap.add_argument("--loops", type=float, default=0.30, help="fraction of extra walls to open (0.2 sparse .. 0.5 open)")
     ap.add_argument("--dead-ends", type=int, default=2, help="dead ends to leave")
+    ap.add_argument("--rooms", action="store_true", help="knock out walls to make open rooms (15 x 21 boards)")
     ap.add_argument("--out")
     ap.add_argument("--show", action="store_true")
     args = ap.parse_args(argv)
     lines = generate(args.rows, args.cols, args.seed, args.loops, args.dead_ends)
+    if args.rooms:
+        lines = add_rooms(lines)
     st = stats(lines)
     if not st["connected"]:
         print("not connected — try another seed", file=sys.stderr); return 1

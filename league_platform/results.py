@@ -83,18 +83,31 @@ def path_of(owner):
 
 
 def boards():
-    """name -> path, training boards (practice*) first, then test boards (hidden*)."""
+    """name -> path: training boards (practice*), then the round-1 test boards (hidden*), then the
+    round-2 test boards (new*)."""
     found = {os.path.splitext(os.path.basename(p))[0]: p for p in glob.glob(os.path.join(BOARDS, "*.txt"))}
-    return dict(sorted(found.items(), key=lambda kv: (board_kind(kv[0]) != "training", kv[0])))
+    return dict(sorted(found.items(), key=lambda kv: (KIND_ORDER.index(board_kind(kv[0])), kv[0])))
+
+
+KIND_ORDER = ["training", "test", "new"]
+KIND_LABEL = {"training": "Training ", "test": "Test ", "new": "New test "}
 
 
 def board_kind(name):
-    return "test" if name.startswith("hidden") else "training"
+    return "test" if name.startswith("hidden") else "new" if name.startswith("new") else "training"
 
 
 def board_label(name):
     digits = "".join(ch for ch in name if ch.isdigit())
-    return ("Test " if board_kind(name) == "test" else "Training ") + (digits or name)
+    return KIND_LABEL[board_kind(name)] + (digits or name)
+
+
+def student_of(owner):
+    """erbol_old / erbol_new -> erbol (round 2: the suffix says which submission is playing)."""
+    for suffix in ("_old", "_new"):
+        if owner.endswith(suffix):
+            return owner[: -len(suffix)]
+    return owner
 
 
 def file_hash(path):
@@ -170,9 +183,11 @@ def is_current(rec, pac, ghost):
     return bool(rec and pp and gp and rec.get("pac_hash") == file_hash(pp) and rec.get("ghost_hash") == file_hash(gp))
 
 
-def missing(force=False):
+def missing(force=False, scope="all"):
     games = load()
-    return [(p, g, b) for p, g, b in schedule() if force or not is_current(games.get(gkey(p, g, b)), p, g)]
+    bs = set(scope_boards(scope))
+    return [(p, g, b) for p, g, b in schedule()
+            if b in bs and (force or not is_current(games.get(gkey(p, g, b)), p, g))]
 
 
 def play_one(pac, ghost, board):
@@ -204,17 +219,30 @@ def play_one(pac, ghost, board):
     return record(replay, pac, ghost, board, ph, gh, "play-all")
 
 
-def play_all(force=False, progress=None, stop=None):
-    """Plays the missing games one at a time (parallel games push agents past 100 ms)."""
-    todo = missing(force)
+def play_all(force=False, progress=None, stop=None, scope="all", parallel=1):
+    """Plays the missing games, one at a time by default (on a laptop parallel games pushed agents
+    past 100 ms). parallel=N plays N games at once, one board at a time; check the faults afterwards."""
+    todo = missing(force, scope)
     if progress:
         progress(0, len(todo), None)
-    for i, (p, g, b) in enumerate(todo):
+    if parallel <= 1:
+        for i, (p, g, b) in enumerate(todo):
+            if stop and stop():
+                break
+            rec = play_one(p, g, b)
+            if progress:
+                progress(i + 1, len(todo), rec)
+        return len(todo)
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+    done = 0
+    for board in dict.fromkeys(b for _, _, b in todo):
         if stop and stop():
             break
-        rec = play_one(p, g, b)
-        if progress:
-            progress(i + 1, len(todo), rec)
+        with ThreadPoolExecutor(parallel) as pool:
+            for fut in as_completed([pool.submit(play_one, p, g, b) for p, g, b in todo if b == board]):
+                done += 1
+                if progress:
+                    progress(done, len(todo), fut.result())
     return len(todo)
 
 
@@ -245,8 +273,8 @@ def scope_boards(scope):
     bs = list(boards())
     if scope in (None, "", "test"):
         return [b for b in bs if board_kind(b) == "test"]
-    if scope == "training":
-        return [b for b in bs if board_kind(b) == "training"]
+    if scope in ("training", "new"):
+        return [b for b in bs if board_kind(b) == scope]
     if scope == "all":
         return bs
     return [b for b in bs if b == scope]
@@ -263,7 +291,7 @@ def ranking(scope="test"):
 
     rows = []
     for o in ps:
-        others = [x for x in ps if x != o]
+        others = [x for x in ps if student_of(x) != student_of(o)]    # never its own old/new version
         pg = [g for x in others + ["random_ghost"] for g in by.get((o, x), [])]
         gg = [g for x in others for g in by.get((x, o), [])]
         pa, ga = _mean(g["pacman_score"] for g in pg), _mean(g["ghost_score"] for g in gg)
@@ -277,11 +305,16 @@ def ranking(scope="test"):
                      "faults": sum(g["faults_pacman"] for g in pg) + sum(g["faults_ghost"] for g in gg)})
     rows.sort(key=lambda r: (-(r["league"] if r["league"] is not None else -1),
                              -(r["pac_avg"] if r["pac_avg"] is not None else -1), r["owner"]))
-    rank = 0
+    rank, n = 0, sum(1 for r in rows if r["kind"] == "student")
     for r in rows:
+        r["house_marks"] = r["rank_marks"] = r["marks"] = None
         if r["kind"] == "student":
             rank += 1
             r["rank"] = rank
+            if r["league"] is not None:      # league marks out of 5, as in instructor/league.py
+                r["house_marks"] = float((r["house_pac"] or 0) > 0.5) + float((r["house_ghost"] or 0) > 0.5)
+                r["rank_marks"] = 3.0 if n == 1 else 1 + 2 * (n - rank) / (n - 1)
+                r["marks"] = r["house_marks"] + r["rank_marks"]
         else:
             r["rank"] = None
 
@@ -323,8 +356,10 @@ def main(argv=None):
     sub = ap.add_subparsers(dest="cmd", required=True)
     sp = sub.add_parser("play", help="play every missing or outdated game")
     sp.add_argument("--force", action="store_true", help="replay every game")
+    sp.add_argument("--boards", default="all", help="all | test | training | new | <board name>")
+    sp.add_argument("--parallel", type=int, default=1, help="games played at once, one board at a time (default 1)")
     st = sub.add_parser("table", help="print the ranking")
-    st.add_argument("--boards", default="test", help="test | training | all | <board name>")
+    st.add_argument("--boards", default="test", help="test | training | new | all | <board name>")
     si = sub.add_parser("import", help="adopt replays from a folder")
     si.add_argument("folder")
     args = ap.parse_args(argv)
@@ -337,7 +372,7 @@ def main(argv=None):
                       f"{rec['pacman_score']:.2f}  ({time.time() - t0:.0f}s)", flush=True)
             else:
                 print(f"{n} games to play", flush=True)
-        play_all(args.force, progress)
+        play_all(args.force, progress, scope=args.boards, parallel=args.parallel)
     elif args.cmd == "table":
         print_table(args.boards)
     elif args.cmd == "import":

@@ -30,6 +30,15 @@ def clean_fault(f):
     return re.sub(r":\s*[\d.]+\s*ms", "", str(f))       # "too slow: 119 ms" -> "too slow"
 
 
+def site_ranking():
+    """The round-2 league: ranking and league marks on the new test boards."""
+    t = results.ranking("new")
+    keep = ("owner", "kind", "rank", "pac_avg", "ghost_avg", "league", "house_pac", "house_ghost",
+            "house_marks", "rank_marks", "marks")
+    return {"boards": t["boards"], "played": t["played"], "expected": t["expected"],
+            "rows": [{k: r[k] for k in keep} for r in t["rows"]]}
+
+
 def main():
     data = os.path.join(DOCS, "data")
     shutil.rmtree(data, ignore_errors=True)
@@ -65,7 +74,8 @@ def main():
     catalog = {"boards": out_boards,
                "players": [{"name": p, "kind": results.kind_of(p)} for p in players],
                "house": {h: s for h, s in results.HOUSE.items()},
-               "games": games}
+               "games": games,
+               "ranking": site_ranking()}
     with open(os.path.join(data, "catalog.json"), "w", encoding="utf-8") as f:
         json.dump(catalog, f, separators=(",", ":"))
     open(os.path.join(DOCS, ".nojekyll"), "w").close()

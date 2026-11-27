@@ -173,7 +173,7 @@ let labels = {pacman:'', ghost:''};
 let anim = {prev:null, cur:null, t0:0, dur:120};
 let catalogue = {agents:[], boards:[]};
 let sel = {pacman:'human', ghost:null, board:null, fog:'all'};
-let scope = 'test';
+let scope = 'new';
 let jobBusy = false;
 
 const key = (r,c) => r + ',' + c;
@@ -427,7 +427,7 @@ function scoreColor(s) {       // 0 = ghost red, 1 = Pac-Man gold
 }
 $('legendBar').style.background = `linear-gradient(90deg, ${scoreColor(0)}, ${scoreColor(.5)}, ${scoreColor(1)})`;
 async function loadRanking() {
-  const scopes = [{value:'test', label:'Test boards (league)'}, {value:'training', label:'Training boards'}, {value:'all', label:'All boards'}]
+  const scopes = [{value:'new', label:'New test boards'}]
     .concat(catalogue.boards.map(b => ({value:b.name, label:b.label})));
   chips($('scopeChips'), scopes, scope, v => { scope = v; loadRanking(); });
   $('btnPlayAll').disabled = jobBusy;
@@ -462,7 +462,7 @@ async function loadRanking() {
   $('matrix').querySelectorAll('td button').forEach(b => b.onclick = () => {
     sel.pacman = nameOf(b.dataset.p); sel.ghost = nameOf(b.dataset.g);
     if (catalogue.boards.some(x => x.name === scope)) sel.board = scope;
-    else if (scope === 'training' || scope === 'test') { const bb = catalogue.boards.find(x => x.kind === scope); if (bb) sel.board = bb.name; }
+    else if (scope === 'training' || scope === 'test' || scope === 'new') { const bb = catalogue.boards.find(x => x.kind === scope); if (bb) sel.board = bb.name; }
     stopLive(); live.id = null; setMode('live');
   });
 }

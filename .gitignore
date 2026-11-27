@@ -13,3 +13,7 @@ league_platform/results/submissions.json
 league_platform/ranking_public.md
 league_platform/ranking_moodle.html
 instructor/reference_agent.py
+
+# ---- round 2: student code and checker reports ----
+Submissions_round2/
+league_platform/results/round2_*.json

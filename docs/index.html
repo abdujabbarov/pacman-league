@@ -65,6 +65,15 @@
   .matrix td.self button { outline:2px dashed var(--text); outline-offset:-4px; }
   .legend { display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:10px; }
   .legend .bar { width:160px; height:10px; border-radius:5px; }
+  /* ranking */
+  #rankingView { padding:12px 16px; }
+  .rank th, .rank td { padding:8px 14px; text-align:right; border-bottom:1px solid var(--line); white-space:nowrap; }
+  .rank th { color:var(--muted); font-size:11px; font-weight:500; text-transform:uppercase; letter-spacing:.08em; }
+  .rank th:nth-child(2), .rank td:nth-child(2) { text-align:left; }
+  .rank td.lg { font-weight:600; }
+  .rank td.grade { font-weight:700; color:var(--pac); font-size:15px; }
+  .rank tr.ref td { color:var(--muted); font-style:italic; }
+  .rank .no { color:var(--ghost); }
 </style>
 </head>
 <body>
@@ -73,14 +82,15 @@
   <div class="tabs">
     <button id="tabReplay" class="active" onclick="setMode('replay')">Replays</button>
     <button id="tabTable" onclick="setMode('table')">Table</button>
+    <button id="tabRanking" onclick="setMode('ranking')">Ranking</button>
   </div>
   <span class="sub" id="note">loading…</span>
 </header>
 
-<div class="topbar">
+<div class="topbar" id="topbar">
   <div class="group"><label>Board</label><span id="boardChips"></span></div>
   <div class="group" id="viewGroup"><label>View</label><span id="fogChips"></span></div>
-  <div class="group" id="speedGroup"><label>Speed</label><input type="range" id="speed" min="40" max="600" step="10" value="160" oninput="$('speedLabel').textContent=this.value"><span class="small"><span id="speedLabel">160</span> ms/tick</span></div>
+  <div class="group" id="speedGroup"><label>Speed</label><span id="speedChips"></span><span class="small">ms/tick</span></div>
   <div class="group" id="playGroup">
     <button onclick="step(-1)" title="one move back (←)">◀</button>
     <button class="primary" id="playBtn" onclick="togglePlay()" title="space">Play</button>
@@ -116,7 +126,15 @@
       <span>· <span class="caught" id="legendCaught"></span> = Pac-Man caught (×n: in n games) · dashed = against its own ghost · click a cell to watch the game</span></div>
     <div class="scroll"><table class="matrix" id="matrix"></table></div>
     <p class="small">Pac-Man's score is the share of the food eaten, halved if caught; the ghost scores 1 minus that.
-      "All boards" shows the average over the five boards.</p>
+      "New boards" shows the average over the new test boards.</p>
+  </div>
+</section>
+
+<section id="rankingView" class="hidden">
+  <div class="card">
+    <h2 id="rankTitle">Ranking</h2>
+    <div class="scroll"><table class="rank" id="rankTable"></table></div>
+    <p class="small" id="rankNote"></p>
   </div>
 </section>
 
@@ -124,7 +142,8 @@
 const $ = id => document.getElementById(id);
 const key = (r, c) => r + ',' + c;
 const esc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
-let cat = null, mode = 'replay';
+let cat = null, mode = 'replay', speedMs = 160;
+const SPEEDS = [40, 80, 160, 320];
 let sel = {pacman:null, ghost:null, board:null, fog:'all'};
 let tableBoard = null;
 let board = null, view = null, lastSeen = {pacman:null, ghost:null};
@@ -220,7 +239,7 @@ function render(jump) {
   const prev = view, s = stateAt(rep.idx), g = rep.game;
   view = s;
   anim = {prev: jump || !prev ? {pacman:s.pacman, ghost:s.ghost} : {pacman:prev.pacman, ghost:prev.ghost},
-          cur: {pacman:s.pacman, ghost:s.ghost}, t0: performance.now(), dur: Math.max(30, rep.playing ? +$('speed').value : 140)};
+          cur: {pacman:s.pacman, ghost:s.ghost}, t0: performance.now(), dur: Math.max(30, rep.playing ? speedMs : 140)};
   const cap = rep.data.max_ticks;
   $('sTick').textContent = Math.min(s.tick, cap) + ' / ' + cap;
   $('sTurn').textContent = s.done ? 'over' : (rep.playing ? 'playing' : 'paused');
@@ -252,7 +271,7 @@ function togglePlay() {
     if (!rep.playing) return;
     if (rep.idx >= rep.data.turns.length) { stop(); render(false); return; }
     rep.idx = nextTick(rep.idx); render(false);
-    rep.handle = setTimeout(fn, +$('speed').value);
+    rep.handle = setTimeout(fn, speedMs);
   };
   fn();
 }
@@ -288,6 +307,7 @@ function renderReplay() {
   listItems($('pacList'), pacs.map(p => ({value:p, tag:tagOf(p)})), sel.pacman, v => { sel.pacman = v; renderReplay(); });
   listItems($('ghostList'), ghosts.map(g => ({value:g, tag: g === sel.pacman ? 'own ghost' : tagOf(g), dim:!have.has(g)})), sel.ghost, v => { sel.ghost = v; renderReplay(); });
   chips($('boardChips'), cat.boards.map(b => ({value:b.name, label:b.label})), sel.board, v => { sel.board = v; renderReplay(); });
+  chips($('speedChips'), SPEEDS.map(v => ({value:v, label:String(v)})), speedMs, v => { speedMs = v; renderReplay(); });
   chips($('fogChips'), [{value:'all', label:'All'}, {value:'pacman', label:'Pac-Man'}, {value:'ghost', label:'Ghost'}], sel.fog, v => { sel.fog = v; renderReplay(); draw(); });
   history.replaceState(null, '', `#p=${encodeURIComponent(sel.pacman)}&g=${encodeURIComponent(sel.ghost)}&b=${encodeURIComponent(sel.board)}`);
   openGame(findGame(sel.pacman, sel.ghost, sel.board));
@@ -301,7 +321,7 @@ function scoreColor(s) {
   return `rgb(${a.map((v, i) => Math.round(v + (b[i] - v) * t)).join(',')})`;
 }
 function renderTable() {
-  chips($('boardChips'), cat.boards.map(b => ({value:b.name, label:b.label})).concat([{value:'all', label:'All boards'}]), tableBoard,
+  chips($('boardChips'), cat.boards.map(b => ({value:b.name, label:b.label})).concat([{value:'new', label:'New boards'}]), tableBoard,
         v => { tableBoard = v; renderTable(); });
   const pacs = cat.players.map(p => p.name).concat(Object.keys(cat.house).filter(h => cat.house[h] === 'pacman'));
   const ghosts = cat.players.map(p => p.name).concat(Object.keys(cat.house).filter(h => cat.house[h] === 'ghost'));
@@ -311,7 +331,7 @@ function renderTable() {
     h += `<tr><th class="${isHouse(p) ? 'house' : ''}">${esc(p)}</th>`;
     for (const g of ghosts) {
       const self = p === g ? 'self' : '';
-      const games = cat.games.filter(x => x.pacman === p && x.ghost === g && (tableBoard === 'all' || x.board === tableBoard));
+      const games = cat.games.filter(x => x.pacman === p && x.ghost === g && (tableBoard === 'new' ? boardOf(x.board).kind === 'new' : x.board === tableBoard));
       if (!games.length && isHouse(p) && isHouse(g)) { h += '<td></td>'; continue; }
       if (!games.length) { h += `<td class="${self}"><button class="empty" disabled>·</button></td>`; continue; }
       const s = games.reduce((a, x) => a + x.pacman_score, 0) / games.length;
@@ -326,12 +346,35 @@ function renderTable() {
     sel.pacman = b.dataset.p; sel.ghost = b.dataset.g; sel.board = b.dataset.b; setMode('replay');
   });
 }
+// ------------------------------------------------------------------ ranking
+function renderRanking() {
+  const t = cat.ranking, f3 = x => x == null ? '–' : x.toFixed(3), f2 = x => x == null ? '–' : x.toFixed(2);
+  const labels = t.boards.map(b => boardOf(b).label).join(', ');
+  $('rankTitle').textContent = `Ranking and league grades · new test boards (${labels})`;
+  $('rankTable').innerHTML = '<thead><tr><th>Rank</th><th>Player</th><th>Pac-Man avg</th><th>Ghost avg</th><th>League score</th>' +
+    '<th>Grade (5)</th></tr></thead><tbody>' +
+    t.rows.map(r => `<tr class="${r.kind === 'student' ? '' : 'ref'}"><td>${r.rank || '–'}</td>` +
+      `<td>${esc(r.owner)}${r.kind === 'instructor' ? ' <span class="small">(instructor, not ranked)</span>' : ''}</td>` +
+      `<td>${f3(r.pac_avg)}</td><td>${f3(r.ghost_avg)}</td><td class="lg">${f3(r.league)}</td>` +
+      `<td class="grade">${f2(r.marks)}</td></tr>`).join('') + '</tbody>';
+  const n = t.rows.filter(r => r.kind === 'student').length;
+  $('rankNote').innerHTML = `Only the games on the new test boards count (${t.played} of ${t.expected} played). ` +
+    'Each student plays with the better of their two submissions: <b>_new</b> = the round-2 agent, <b>_old</b> = the round-1 agent.<br>' +
+    'Pac-Man avg: the share of the food eaten, halved if caught, against every other player’s ghost and the random ghost. ' +
+    'Ghost avg: 1 minus the opposing Pac-Man’s score, against every other player’s Pac-Man. League score: the mean of the two; it sets the rank. ' +
+    'Games against your own ghost are not counted.<br>' +
+    `Grade (5): 2 marks for beating the house agents (1 if the Pac-Man averages above 0.5 against the baseline and random ghosts, 1 if the ghost averages above 0.5 against the baseline Pac-Man) ` +
+    `plus 1 to 3 marks by rank (1st = 3, last = 1, linear in between, over the ${n} students).`;
+}
 function setMode(m) {
   mode = m; stop();
   $('tabReplay').classList.toggle('active', m === 'replay'); $('tabTable').classList.toggle('active', m === 'table');
+  $('tabRanking').classList.toggle('active', m === 'ranking');
   $('replayView').classList.toggle('hidden', m !== 'replay'); $('tableView').classList.toggle('hidden', m !== 'table');
+  $('rankingView').classList.toggle('hidden', m !== 'ranking'); $('topbar').classList.toggle('hidden', m === 'ranking');
   ['viewGroup', 'speedGroup', 'playGroup'].forEach(id => $(id).classList.toggle('hidden', m !== 'replay'));
   if (m === 'replay') { rep.game = null; renderReplay(); }
+  else if (m === 'ranking') renderRanking();
   else { if (!tableBoard) tableBoard = sel.board; renderTable(); }
 }
 document.addEventListener('keydown', ev => {
@@ -350,7 +393,8 @@ document.addEventListener('keydown', ev => {
   const q = new URLSearchParams(location.hash.slice(1));
   sel.pacman = q.get('p') || (cat.players.find(p => p.kind === 'student') || {}).name;
   sel.ghost = q.get('g'); sel.board = q.get('b');
-  if (q.get('tab') === 'table') { tableBoard = q.get('b') || 'all'; setMode('table'); } else setMode('replay');
+  if (q.get('tab') === 'table') { tableBoard = q.get('b') || 'new'; setMode('table'); }
+  else if (q.get('tab') === 'ranking') setMode('ranking'); else setMode('replay');
 })();
 </script>
 </body>
